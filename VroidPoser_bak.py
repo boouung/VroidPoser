@@ -9,11 +9,9 @@ import shutil  # file manipulation
 import math  # math
 import os  # file manipulation
 
-mode = "Edit"
-
 # initialize tkinter gui
 root = Tk()
-root.resizable(False, False)
+root.resizable(0, 0)
 root.title("VroidPoser v1.0")
 root.geometry("700x500+500+200")
 root.iconphoto(False, PhotoImage(file="Resources/icon.png"))
@@ -25,7 +23,7 @@ canvas.place(relx=0, rely=0)
 poseLabel = Label(root, text="Poses:", anchor="w")
 poseLabel.place(x=400, y=320, width=50, height=20)
 poseFrame = Frame(root, width=100, height=120)
-poseFrame.pack_propagate(False)
+poseFrame.pack_propagate(0)
 poseFrame.place(x=400, y=340)
 poseList = Listbox(poseFrame, width=13, exportselection=False)
 poseList.pack(side=LEFT, fill=Y)
@@ -37,7 +35,7 @@ poseSb.config(command=poseList.yview)
 stagingLabel = Label(root, text="Staging:", anchor="w")
 stagingLabel.place(x=500, y=320, width=50, height=20)
 stagingFrame = Frame(root, width=100, height=120)
-stagingFrame.pack_propagate(False)
+stagingFrame.pack_propagate(0)
 stagingFrame.place(x=500, y=340)
 stagingList = Listbox(stagingFrame, width=13, exportselection=False)
 stagingList.pack(side=LEFT, fill=Y)
@@ -49,7 +47,7 @@ stagingSb.configure(command=stagingList.yview)
 moveLabel = Label(root, text="Motions:", anchor="w")
 moveLabel.place(x=600, y=320, width=50, height=20)
 moveFrame = Frame(root, width=100, height=120)
-moveFrame.pack_propagate(False)
+moveFrame.pack_propagate(0)
 moveFrame.place(x=600, y=340)
 moveList = Listbox(moveFrame, width=13, exportselection=False)
 moveList.pack(side=LEFT, fill=Y)
@@ -73,6 +71,12 @@ ip = ""  # ip address (str)
 osc = 0  # whether the osc protocol is enabled (1 or 0)
 port = 0  # port number
 
+radius = 15  # size of the joystick BUTTON radius not the range of the joysticks
+joyRange = 80  # range of motion for the joysticks
+deadzone = 4
+rotTarget = None  # Joint selected to rotate
+target = "Placeholder"  # selected joint's joystick (str or None). Initialized as str to prevent PyCharm errors
+
 hotkeys = {}  # Dictionary of all hotkey objects and their associated pose/motion
 listen = False  # Enables/Disables key logging
 pressed = []  # Array that captures keyboard inputs to turn into hotkeys later
@@ -81,7 +85,7 @@ checkVar = IntVar()  # Variable for checkbutton
 staging = []  # List of poses used to create motion
 travel = [0, 0, 0]  # the hip bone's x, y, z position in space
 destination = [0, 0, 0]  # the desired hip bone position in space
-offset = [0, 0, 0]  # required offset value, if any
+offset = [0, 0, 0]  # required offset, if any
 
 # List of joints and their respective joystick's coordinates on the gui (Important for calculations)
 rArm = ["RightHand", "RightLowerArm", "RightUpperArm", "RightShoulder"]
@@ -118,84 +122,19 @@ yBod = [[740, 50], [860, 50], [800, 50], [800, 110], [800, 170], [800, 230], [80
 names = [rArm, lArm, rHand, lHand, rLeg, lLeg, body]
 startcoords = [armR, armL, handR, handL, legR, legL, yBod]
 
-
-radius = 8  # size of the joystick BUTTON radius not the range of the joysticks
-joyRange = 20  # range of motion for the joysticks
-deadzone = 4  # mayhap
-rotTarget = None  # Joint selected to rotate
-target = "Placeholder"  # selected joint's joystick (str or None). Initialized as str to prevent PyCharm errors
-
-#test = Joystick(canvas, "none", 200, 200, radius, joyRange)
-
-
-que = []
-
-class Joystick:
-    def __init__(self, parent, joint, x, y, r, range):
-        self.parent = parent
-        self.joint = joint
-        self.ix = x
-        self.iy = y
-        self.r = r
-        self.x = x
-        self.y = y
-        self.range = range
-        self.border = None
-        self.shape = None
-        self.draw()
-
-    def draw(self):
-        try:
-            self.parent.delete(self.shape)  # This will cause issues later (it checks linearly). Change it!
-            self.parent.delete(self.border)
-        except:
-            print("Unitialized")
-        x0, y0, x1, y1 = (self.ix - self.range), (self.iy - self.range), (self.ix + self.range), (self.iy + self.range)
-        self.border = self.parent.create_oval(x0, y0, x1, y1)
-        x0, y0, x1, y1 = (self.x - self.r), (self.y - self.r), (self.x + self.r), (self.y + self.r)
-        self.shape = self.parent.create_oval(x0, y0, x1, y1)
-
-    def detect(self, mx, my, focus):
-        dist = math.dist((mx, my), (self.ix, self.iy))
-
-        if focus == self.joint:
-            if round(dist) <= self.range:
-                self.x,self.y = mx, my
-            else:
-                ratio = self.range/dist
-                self.x, self.y = self.ix + ((mx-self.ix)*ratio), self.iy + ((my-self.iy)*ratio)
-
-            multiplier = 0
-            if "Left" in self.joint:  # Left-side bones need to be flipped
-                multiplier = -1
-            else:
-                multiplier = 1
-            q = -4 * ((self.x-self.ix) / joyRange)
-            w = -4 * ((self.y-self.iy) / joyRange) * multiplier
-
-            rot = 0  # moved[target][2] ** 3
-
-            que.append([self.joint, q, w, rot])
-        self.draw()
-
-
 joints = {}
-for lists, pos in zip(names, startcoords):
-    for name, duo in zip(lists, pos):
-        joints[name] = Joystick(canvas, name, duo[0], duo[1], radius, joyRange)
+for lists in names:
+    for name in lists:
+        joints[name] = startcoords[names.index(lists)][lists.index(name)] + [0]
 moved = joints.copy()
 
-# def moveit():
-#     if "Left" in target:  # Left-side bones need to be flipped
-#         multiplier = -1
-#     else:
-#         multiplier = 1
-#     q = -4 * ((moved[target][0] - joints[target][0]) / joyRange)  #
-#     w = -4 * ((moved[target][1] - joints[target][1]) / joyRange) * multiplier
-#
-#     #rot = moved[target][2]**3
-#     rot = 0
-#     sieve(target, q, w, rot)
+
+def create_circle(x, y, r, canvasname, **kwargs):  # function to creates circles I yoinked
+    x0 = x - r
+    y0 = y - r
+    x1 = x + r
+    y1 = y + r
+    return canvasname.create_oval(x0, y0, x1, y1, **kwargs)
 
 
 def readcfg():  # reads "config.cfg" to restore previous sessions' settings
@@ -214,7 +153,7 @@ def readcfg():  # reads "config.cfg" to restore previous sessions' settings
             ipEntry.insert(0, ip)
         elif split[0] == "port":
             port = int(split[1])
-            portEntry.insert(0, str(port))
+            portEntry.insert(0, port)
         elif split[0] == "osc":
             osc = int(split[1])
         elif split[0] == "offset":
@@ -236,8 +175,7 @@ def readcfg():  # reads "config.cfg" to restore previous sessions' settings
     print(hotkeys)
 
 
-def sendosc(dingus):  # condensed OSC message function
-    bone, x, y, z = dingus[0], dingus[1], dingus[2], dingus[3]
+def sendosc(bone, x, y, z):  # condensed OSC message function
     global offset
     if checkVar.get() == 1:
         if bone == "Hips":
@@ -249,20 +187,20 @@ def sendosc(dingus):  # condensed OSC message function
             msg = oscbuildparse.OSCMessage("/VMC/Ext/Bone/Pos", None,
                                            [bone, float(0), float(0), float(0), float(x),
                                             float(y), float(z), float(1)])
+
         osc_send(msg, "VroidPoser")
         osc_process()
 
 
-# !this needs to be implimented somewhere!
-# def sieve(joint, q, w, rot):
-#     if joint in lLeg:
-#         sendosc(joint, w, rot, q)
-#     elif joint in rLeg:
-#         sendosc(joint, -1 * w, rot, q)
-#     elif joint in body and "Eye" not in joint:
-#         sendosc(joint, -1 * w, -1 * rot, -1 * q)
-#     else:
-#         sendosc(joint, rot, q, w)
+def sieve(joint, q, w, rot):
+    if joint in lLeg:
+        sendosc(joint, w, rot, q)
+    elif joint in rLeg:
+        sendosc(joint, -1 * w, rot, q)
+    elif joint in body and "Eye" not in joint:
+        sendosc(joint, -1 * w, -1 * rot, -1 * q)
+    else:
+        sendosc(joint, rot, q, w)
 
 
 def rotate(bone, rot):  # takes input from slider to control limb rotation
@@ -279,7 +217,7 @@ def rotate(bone, rot):  # takes input from slider to control limb rotation
         moved[bone][2] = rot
         rot = (1*rot)**3
 
-        #sieve(bone, q, w, rot)
+        sieve(bone, q, w, rot)
 
 
 def enablecoms():  # Enables/Disables OSC protocol
@@ -294,6 +232,46 @@ def enablecoms():  # Enables/Disables OSC protocol
         osc_udp_client(ip, port, "VroidPoser")  # initializes osc client
     else:
         osc_terminate()  # ...otherwise end the protocol if it's running
+
+
+def draw():  # Refreshes canvas each time a change occurs and redraws it
+    global joints
+    global moved
+    canvas.delete("all")
+    for objs in joints.keys():  # for each key in the dictionary ("joints")
+        if objs in names[0]:
+            color = "red"
+        elif objs in names[1]:
+            color = "green"
+        elif objs in names[2]:
+            color = "blue"
+        elif objs in names[3]:
+            color = "indigo"
+        elif objs in names[4]:
+            color = "violet"
+        elif objs in names[5]:
+            color = "maroon"
+        elif objs in names[6]:
+            color = "black"
+        create_circle(joints[objs][0], joints[objs][1], joyRange / 2, canvas, width=2)  # visualizes joystick range
+        if objs == target:  # activates if the joint was selected
+            canvas.create_line(joints[target][0], joints[target][1], moved[target][0], moved[target][1])
+            create_circle(moved[target][0], moved[target][1], 5, canvas, fill=color, width=0)
+            if "Left" in target:  # Left-side bones need to be flipped
+                multiplier = -1
+            else:
+                multiplier = 1
+
+            q = -4 * ((moved[target][0] - joints[target][0]) / joyRange)
+            w = -4 * ((moved[target][1] - joints[target][1]) / joyRange) * multiplier
+
+            rot = moved[target][2]**3
+
+            sieve(target, q, w, rot)
+
+        else:  # If the joint was not selected it's redrawn
+            canvas.create_line(joints[objs][0], joints[objs][1], moved[objs][0], moved[objs][1])
+            create_circle(moved[objs][0], moved[objs][1], radius, canvas, fill=color, width=0)
 
 
 def refresh():  # Refreshes list of available poses
@@ -337,7 +315,7 @@ def reset():  # Resets all joints
                 ver = w + (0 - w) * x
                 rot = e + (0 - e) * x
 
-                # sieve(i, hor, ver, rot)
+                sieve(i, hor, ver, rot)
 
             x += 0.01
         destination = [0, 0, 0]
@@ -346,13 +324,65 @@ def reset():  # Resets all joints
         moved = joints.copy()
         travel = [0, 0, 0]
         rotSlider.set(0)
+        draw()
 
 
 def posepicker(event):  # Activates a pose. Calculates poses in between initial pose "tempdict" and the loaded pose data
     global moved
     global travel
     global destination
+    file = open(event, "r")
+    lines = file.readlines()
     tempdict = {}  # temporary dictionary stores new pose data
+    x = 0
+    while x <= 1:  # ideally would be "for lines" -> "x<=1:" but the blocking provided seems to help with movement
+        for line in lines:
+            split = line.split(",")
+            if split[0] == "speed":
+                speedSlider.set(float(split[1].rstrip("\n")))
+            elif split[0] == "travel":
+                split[1] = travel[0] + (float(split[1]) - travel[0]) * x
+                split[2] = travel[1] + (float(split[2]) - travel[1]) * x
+                split[3] = travel[2] + (float(split[3]) - travel[2]) * x
+                destination = [split[1], split[2], split[3]]
+            else:
+                # horizontal, vertical, bone, rotation. I'm too lazy to go back and fix the order
+                array = [float(split[1]), float(split[2]), str(split[0]), float(split[3])]
+
+                if "Left" in array[2]:  # converts back to positional data (x and y distance from relative origin)
+                    multiplier = -1
+                else:
+                    multiplier = 1
+                a = ((array[0] * joyRange) / (-4)) + joints[array[2]][0]
+                b = ((array[1] * joyRange) / (-4 * multiplier)) + joints[array[2]][1]
+
+                tempdict[array[2]] = [a, b, array[3]]  # Updates tempdict's data
+
+                # start angles (calculated from relative origin)
+                q = -4 * ((moved[array[2]][0] - joints[array[2]][0]) / joyRange)
+                w = -4 * ((moved[array[2]][1] - joints[array[2]][1]) / joyRange) * multiplier
+
+                # end angles (calculated from relative origin)
+                e = -4 * ((a - joints[array[2]][0]) / joyRange)
+                r = -4 * ((b - joints[array[2]][1]) / joyRange) * multiplier
+
+                hor = q + (e - q) * x  # determines incremental changes to angles
+                ver = w + (r - w) * x
+                rot = moved[array[2]][2] + (float(array[3]) - moved[array[2]][2]) * x
+                rot = (1 * rot) ** 3
+
+                sieve(array[2], hor, ver, rot)
+
+        x += speedSlider.get() / 100  # speed
+    if len(moved) == len(tempdict):
+        moved.clear()
+        moved = tempdict.copy()  # sets new modified pose
+    else:
+        for key in moved:
+            if key in tempdict:
+                moved[key] = tempdict[key]
+    travel = destination.copy()
+    draw()
 
 
 def delete():  # Removes a pose from the listbox (deletes the pose file) and refreshes it.
@@ -444,14 +474,12 @@ def deleteanim():  # deletes motion data
 def left_click(event):  # Iterates through "moved" dictionary and checks if a joystick is close enough to be triggered
     global target
     global rotTarget
-    for objs in joints.keys():
-        a, b = root.winfo_pointerx() - root.winfo_rootx(), root.winfo_pointery() - root.winfo_rooty()
-        value = math.dist((a,b),(joints[objs].x, joints[objs].y))
+    for objs in moved.keys():
+        value = math.dist([event.x, event.y], [moved[objs][0], moved[objs][1]])
         if value < radius:
             target = objs
-            print(target)
             rotTarget = objs
-            #rotSlider.set(float(moved[target][2]))  #need to do something about rotation
+            rotSlider.set(float(moved[target][2]))
             break
 
 
@@ -459,7 +487,29 @@ def release(event):  # If a joystick was selected, this unselects it.
     global target
     if target is not None:
         target = None
-    #draw()
+    draw()
+
+
+def move(event):  # Fires when mouse is moved
+    global moved
+    if target is not None:  # If a joint is selected
+        if math.dist([joints[target][0], joints[target][1]], [event.x, event.y]) > joyRange / 2:
+            b = (joyRange * (event.y - joints[target][1])) / (2 * math.dist([event.x, event.y], [joints[target][0],
+                                                                                                 joints[target][1]]))
+            a = (joyRange * (event.x - joints[target][0])) / (2 * math.dist([event.x, event.y], [joints[target][0],
+                                                                                                 joints[target][1]]))
+            # If a joystick is selected but the mouse is ouside the joystick's range, the joystick still points in the
+            # direction of the mouse.
+            moved[target][0] = joints[target][0] + a
+            moved[target][1] = joints[target][1] + b
+            moved[target][2] = moved[target][2]
+        elif math.dist([joints[target][0], joints[target][1]], [event.x, event.y]) <= deadzone:  # creates deazone
+            moved[target] = joints[target]
+
+        else:  # Otherwise just set the new joystick position
+            moved[target] = [event.x, event.y, moved[target][2]]
+        draw()
+
 
 def advanced(event):  # Shows/hides advanced joysticks
     if event is True:
@@ -558,51 +608,31 @@ front.place(x=860, y=150, width=20, height=20)
 
 
 def picker(event, listbox):  # Picks pose/motion and activates it
-    global mode
-    if mode == "Edit":
-        if listbox == "test":
-            for pose in staging:
-                data = "Poses/" + str(pose) + ".txt"
-        else:
-            listbox.selection_clear(0, END)
-            listbox.selection_set(poseList.nearest(event.y))
-            listbox.activate(poseList.nearest(event.y))
-            if listbox == poseList:
-                select = poseList.curselection()
-                if str(select) != "()":
-                    data = "Poses/" + str(poseList.get(select[0])) + ".txt"
-                    file = open(data, 'r')
-                    lines = file.readlines()
-                    file.close()
-                    lines.pop(0) #remove speed
-                    thing = []
-                    for line in lines:
-                        line = line.split(',')
-                        line = [line[0], float(line[1]), float(line[2]), float(line[3])]
-                        thing.append(line)
-                    que.append(thing)
-                    mode = "Play"
-            elif listbox == moveList:
-                select = moveList.curselection()
-                if str(select) != "()":
-                    data = "Moves/" + str(moveList.get(select[0])) + "/animate.txt"
-                    file = open(data, "r")
-                    lines = file.readlines()
-                    for line in lines:
-                        data = "Moves/" + str(moveList.get(select[0])) + "/" + line.rstrip("\n") + ".txt"  #name of pose file
-                        pose = open(data, 'r')
-                        bones = pose.readlines()
-                        pose.close()
-                        bones.pop(0)
-                        thing = []
-                        for bone in bones:
-                            line = bone.split(',')
-                            line = [line[0], float(line[1]), float(line[2]), float(line[3])]
-                            thing.append(line)
-                        que.append(thing)
-                    print(len(que))
-                    mode = "Play"
-
+    if listbox == "test":
+        for pose in staging:
+            data = "Poses/" + str(pose) + ".txt"
+            posepicker(data)
+        posepicker(data)
+    else:
+        listbox.selection_clear(0, END)
+        listbox.selection_set(poseList.nearest(event.y))
+        listbox.activate(poseList.nearest(event.y))
+        if listbox == poseList:
+            select = poseList.curselection()
+            if str(select) != "()":
+                data = "Poses/" + str(poseList.get(select[0])) + ".txt"
+                posepicker(data)
+                posepicker(data)
+        elif listbox == moveList:
+            select = moveList.curselection()
+            if str(select) != "()":
+                data = "Moves/" + str(moveList.get(select[0])) + "/animate.txt"
+                file = open(data, "r")
+                lines = file.readlines()
+                for line in lines:
+                    data = "Moves/" + str(moveList.get(select[0])) + "/" + line.rstrip("\n") + ".txt"
+                    posepicker(data)
+                posepicker(data)
 
 
 def hotkeyactivated(base, listbox):  # too lazy to integrate, so a new function for poses/motion for hotkeys
@@ -714,6 +744,7 @@ def do_popup(event, listbox):
 # All functions that need to be called on initialization
 readcfg()
 refresh()
+draw()
 checkVar.set(osc)
 enablecoms()
 
@@ -744,31 +775,7 @@ moveList.bind("<Button-1>", lambda r: picker(r, moveList))
 
 canvas.bind('<Button 1>', left_click)  # Fires when the canvas is left-clicked
 canvas.bind('<ButtonRelease 1>', release)  # Fires when the left mouse button is released
+canvas.bind('<Motion>', move)  # Fires when the mouse moves
 
 root.protocol("WM_DELETE_WINDOW", terminate)  # Overrules standard exit behavior with the "terminate" function.
-
-
-#depending on the mode either check all joysticks or load and send another set of pose data.
-#if mode is editing, check for position data from joystickls
-#if mode is playback, check for position data from list.
-def main():
-    global mode
-    if mode == "Edit":
-        a, b = root.winfo_pointerx() - root.winfo_rootx(), root.winfo_pointery() - root.winfo_rooty()
-        for joint in joints.keys():
-            joints[joint].detect(a,b, target)
-        if len(que) != 0:
-            print(que[0])
-            sendosc(que.pop(0))
-    elif mode == "Play":
-        if len(que) != 0:
-            if isinstance(que[0], list):
-                for i in que.pop(0):
-                    print(i)
-                    sendosc(i)
-        else:
-            mode = "Edit"
-    root.after(10, main)
-
-root.after(10, main)
 root.mainloop()  # Run that baby!
